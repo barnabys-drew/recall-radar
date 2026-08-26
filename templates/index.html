@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recall Radar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="{{ url_for('static', filename='app.css') }}" rel="stylesheet">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <span class="dot" id="live-dot"></span>
+      <div>
+        <h1>Recall Radar</h1>
+        <div class="subtitle" id="source-line">loading&hellip;</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="sync-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round" id="sync-icon">
+        <path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path>
+      </svg>
+      <span id="sync-label">Sync</span>
+    </button>
+  </header>
+
+  <!-- The primary action: check one thing before it goes in the cart. -->
+  <section class="card-panel hero">
+    <div class="pad">
+      <p class="hero-label">Check something before you buy it</p>
+      <p class="hero-sub">Type a brand and product, or scan a barcode into the second box.</p>
+      <div class="search-row">
+        <input class="search-box" id="q" type="search" autocomplete="off"
+               placeholder="e.g. Taylor Farms chopped salad" aria-label="Product name">
+        <input class="search-box narrow" id="upc" type="search" inputmode="numeric"
+               autocomplete="off" placeholder="Barcode" size="13" aria-label="Barcode">
+        <button class="btn primary" id="check-btn">Check</button>
+      </div>
+      <div class="opts">
+        <label class="opt"><input type="checkbox" id="opt-all"> Include closed recalls</label>
+        <label class="opt">Sold in
+          <select class="search-box narrow" id="opt-state" aria-label="State filter">
+            <option value="">any state</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section id="results" style="margin-bottom:18px; display:none;"></section>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="grid">
+    <div>
+    <section class="card-panel pad">
+      <h2 class="section-title">Your watchlist <span class="count" id="watch-count"></span></h2>
+      <div class="add-row">
+        <input class="search-box" id="w-label" placeholder="Product you buy regularly" aria-label="Product">
+        <input class="search-box narrow" id="w-brand" placeholder="Brand" size="10" aria-label="Brand">
+        <button class="btn" id="w-add">Add</button>
+      </div>
+      <div id="watchlist"><div class="empty">Loading&hellip;</div></div>
+    </section>
+
+    <section class="card-panel pad" style="margin-top:18px;">
+    <h2 class="section-title">Recalls reported per month <span class="count">last 12 months, both agencies</span></h2>
+    <div class="chart-wrap">
+      <div class="chart" id="chart"></div>
+      <div class="tooltip" id="chart-tip"></div>
+    </div>
+    <div class="chart-note" id="chart-note"></div>
+    <details class="table-view">
+      <summary>Show as table</summary>
+      <table class="data" id="chart-table">
+        <thead><tr><th>Month</th><th>Recalls reported</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </section>
+    </div>
+
+    <section class="card-panel pad">
+      <h2 class="section-title">Open recalls, newest first <span class="count" id="feed-count"></span></h2>
+      <div class="opts" style="margin:-4px 0 12px;">
+        <label class="opt"><input type="checkbox" id="feed-class-i" checked> Class I only (most serious)</label>
+      </div>
+      <div class="feed" id="feed"><div class="empty">Loading&hellip;</div></div>
+    </section>
+  </div>
+
+
+</div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

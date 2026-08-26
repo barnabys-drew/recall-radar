@@ -9,6 +9,29 @@ plus several hundred from USDA, and most of them are never reported anywhere a
 parent would see. This pulls all of them into a local database and tells you
 whether a specific thing you are about to buy is on the list.
 
+## The dashboard
+
+`./start.sh` syncs the latest recalls and opens a local dashboard at
+<http://localhost:5055>.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+The search box at the top is the point of the whole thing: type what you are
+about to buy, get an answer before it goes in the cart. Below it, your
+watchlist shows the current state of everything you buy regularly, and the
+feed shows every open recall from both agencies, newest first.
+
+| Checking one item | On a phone, in the aisle |
+| --- | --- |
+| ![Search result](docs/screenshots/search.png) | ![Mobile](docs/screenshots/mobile.png) |
+
+The browser layer is a thin shell over the same `matcher.check` the CLI calls,
+so the two front-ends cannot drift into disagreeing about whether something is
+recalled. Flask is the only third-party package in the project, and only the
+dashboard needs it (`pip install -e ".[web]"`).
+
+## The command line
+
 ```console
 $ recall-radar check "Bazzini chocolate almond bites"
 
@@ -41,9 +64,15 @@ No dependencies beyond Python 3.9+.
 
 ```console
 git clone <this repo> && cd recall-radar
-pip install -e .          # or just run it: python3 -m recall_radar
-recall-radar sync         # first sync pulls ~6,000 recalls in about 10 seconds
+
+./start.sh                # dashboard: makes a venv, syncs, opens the browser
+
+# or command line only - no dependencies at all:
+python3 -m recall_radar sync    # first sync pulls ~6,000 recalls in ~10 seconds
+python3 -m recall_radar check "taylor farms chopped salad"
 ```
+
+`./start.sh --fast` skips the sync and opens cached data immediately.
 
 ## Use
 
@@ -132,6 +161,19 @@ and register it in `sync.SOURCES`. Nothing downstream knows which agency a
 recall came from — states, barcodes, lot codes and the search index are all
 derived from the shared fields.
 
+## Design notes on the dashboard
+
+- **Severity is never carried by colour alone.** Every verdict badge pairs its
+  hue with an icon and a word, so it still reads in greyscale, under
+  colourblindness, or in a screenshot pasted into a message.
+- **The in-progress month is drawn as a dashed outline, not a short bar.**
+  August is always low on the 26th; a solid bar there reads as a real drop in
+  recalls. It is excluded from the peak label and footnoted with the as-of date.
+- **Every charted value is also reachable without hovering** - the peak is
+  directly labelled and a *Show as table* view sits under the chart.
+- The palette is deliberately the same one `finance-viz` uses, so the two local
+  dashboards read as siblings.
+
 ## Development
 
 ```console
@@ -152,3 +194,6 @@ The matching core is deliberately front-end agnostic. The obvious next layers:
 - **Package photos** — OCR into `Query.from_text`, for the ~32% without one.
 - **Alerting** — `scan --new` already keeps a dedupe ledger in the `alerts`
   table, so a cron job plus an email or push sender is a small addition.
+
+The dashboard's `/api/check` already accepts a `upc` parameter, so a phone
+camera feeding barcodes into it needs no backend work.

@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Check the food your family buys against live FDA and USDA recall data."
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []          # standard library only, by design
+dependencies = []          # the core and CLI are standard library only, by design
+
+[project.optional-dependencies]
+# Only the local web dashboard needs a third-party package.
+web = ["flask>=3.0"]
 license = { text = "MIT" }
 
 [project.scripts]
