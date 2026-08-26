@@ -1,0 +1,18 @@
+[project]
+name = "recall-radar"
+version = "0.1.0"
+description = "Check the food your family buys against live FDA and USDA recall data."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []          # standard library only, by design
+license = { text = "MIT" }
+
+[project.scripts]
+recall-radar = "recall_radar.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["recall_radar", "recall_radar.sources"]
