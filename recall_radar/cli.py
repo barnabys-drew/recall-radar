@@ -32,8 +32,11 @@ def _print_match(m, c, verbose=False):
         print(f"    sold in : {r['distribution_pattern'][:110]}")
     for reason in m.reasons:
         print(f"    {c['dim']}why     : {reason} (score {m.score}){c['off']}")
-    if r.get("code_info"):
-        print(f"    {c['dim']}codes   : {r['code_info'][:200]}{c['off']}")
+    # FSIS has no separate code field, so the adapter maps product items into
+    # it; printing both would just repeat the same long line back at the reader.
+    codes = (r.get("code_info") or "").strip()
+    if codes and codes != desc:
+        print(f"    {c['dim']}codes   : {codes[:200]}{c['off']}")
     if r.get("url"):
         print(f"    {c['dim']}details : {r['url']}{c['off']}")
     print()
