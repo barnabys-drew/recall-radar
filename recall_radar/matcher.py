@@ -106,7 +106,7 @@ def _by_barcode(conn, gtin, include_closed):
         f"""SELECT r.*, u.confidence AS upc_confidence
             FROM recall_upcs u JOIN recalls r ON r.id = u.recall_id
             WHERE u.gtin = ?{_status_clause(include_closed)}
-            ORDER BY r.report_date DESC""",
+            ORDER BY r.report_date DESC, r.id""",
         (gtin,),
     ).fetchall()
     out = []
@@ -188,12 +188,18 @@ def _by_text(conn, query, include_closed, limit):
             if score < _GENERIC_FLOOR:
                 continue
             verdict = POSSIBLE
-        top = sorted(matched, key=lambda t: -idf[t])[:4]
+        # Ties broken by the token itself: this string is what a shopper reads,
+        # and it must not depend on SQLite row order.
+        top = sorted(matched, key=lambda t: (-idf[t], t))[:4]
         if key_token and key_token not in matched:
             top = top + [f"but not '{key_token}'"]
         scored.append((score, rid, verdict, top))
 
-    scored.sort(key=lambda s: -s[0])
+    # Recall id is the tiebreak, not decoration: `limit` truncates this list, so
+    # without it two equally-scored matches would be kept or dropped according to
+    # whatever order SQLite happened to return, and the browser port of this
+    # scorer could not reproduce the same ten results.
+    scored.sort(key=lambda s: (-s[0], s[1]))
     scored = scored[:limit]
     if not scored:
         return []
@@ -234,7 +240,7 @@ def check(conn, query, include_closed=False, state=None, limit=10):
         matches = [m for m in matches if _distributed_to(conn, m.recall["id"], state)]
 
     order = {CERTAIN: 0, LIKELY: 1, POSSIBLE: 2}
-    matches.sort(key=lambda m: (order[m.verdict], -m.score))
+    matches.sort(key=lambda m: (order[m.verdict], -m.score, m.recall["id"]))
     return matches[:limit]
 
 

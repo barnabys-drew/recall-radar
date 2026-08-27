@@ -9,3 +9,8 @@ node_modules/
 *.db
 *.db-wal
 *.db-shm
+
+# The Claude Artifact fragment is generated on demand, right before publishing.
+# docs/index.html already carries the same data, and committing both would
+# double a ~790 KB daily churn with a copy that goes stale between publishes.
+recall-radar.html

@@ -1,0 +1,67 @@
+# Re-bakes the aisle app every morning.
+#
+# The page carries its own copy of the recall corpus, which is the only way it
+# can work in a grocery store with no signal - but it also means the data is
+# exactly as old as the last build. This runs the same build.py a developer
+# runs, commits the result, and the service worker hands it to anyone who opens
+# the app next.
+#
+# build.py refuses to write a page that lost an agency, so a bad fetch fails
+# this job loudly and leaves yesterday's good build serving. That is deliberate:
+# stale-but-complete beats fresh-but-missing-the-meat.
+
+name: Rebuild recall data
+
+on:
+  schedule:
+    - cron: "20 11 * * *"      # 06:20 Chicago in summer, 05:20 in winter
+  workflow_dispatch:            # the "Run workflow" button in the Actions tab
+  push:
+    branches: [main]
+    paths:                      # rebuild whenever the app itself changes
+      - template.html
+      - web/matcher.js
+      - build.py
+      - sw-template.js
+
+concurrency:
+  group: rebuild
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Only the parity test needs Node, and it is the test that matters most
+      # here: this job is what puts the ported matcher in front of people.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test
+        run: python3 -m unittest discover -s tests -t .
+
+      - name: Sync and rebuild
+        id: build
+        run: python3 build.py
+
+      - name: Commit the new build
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --cached --quiet; then
+            echo "Nothing changed."
+            exit 0
+          fi
+          git commit -m "Rebuild recall data: ${{ steps.build.outputs.summary }}"
+          git push

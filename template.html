@@ -1,0 +1,812 @@
+<title>Recall Radar</title>
+<style>
+  /* Palette is the dashboard's, so the phone app and the desktop dashboard read
+     as the same tool. Severity is never carried by colour alone: every verdict
+     ships an icon and a word, so it survives colourblindness, greyscale, and a
+     screenshot pasted into a message. */
+  :root {
+    --bg:       #f6f7f9;
+    --panel:    #ffffff;
+    --panel2:   #eef1f5;
+    --ink:      #14181f;
+    --muted:    #5a6472;
+    --faint:    #79828f;
+    --line:     #d8dde5;
+    --line2:    #e6e9ee;
+    --accent:   #0a58ca;
+    --on-accent:#ffffff;
+    --pos:      #1a7f37;
+    /* Reserved status ramp - never reused for anything decorative. */
+    --critical: #c0202c;
+    --serious:  #a8480a;
+    --warning:  #8a5d00;
+    --tint-crit: rgba(192,32,44,.09);
+    --tint-ser:  rgba(168,72,10,.09);
+    --tint-warn: rgba(138,93,0,.10);
+    --tint-pos:  rgba(26,127,55,.09);
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px -16px rgba(16,24,40,.30);
+    --pad: 16px;
+  }
+
+  /* Default (system) dark, and the explicit dark toggle. Never the only place a
+     colour is defined - the light block above always runs first. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1117; --panel: #1c1f26; --panel2: #161b22; --ink: #e1e4e8;
+      --muted: #8b949e; --faint: #6e7681; --line: #2d3139; --line2: #21262d;
+      --accent: #58a6ff; --on-accent: #0d1117; --pos: #3fb950;
+      --critical: #ff8983; --serious: #f0883e; --warning: #e3b341;
+      --tint-crit: rgba(248,81,73,.14); --tint-ser: rgba(219,109,40,.14);
+      --tint-warn: rgba(210,153,34,.13); --tint-pos: rgba(63,185,80,.12);
+      --shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 2px 10px rgba(0,0,0,.30);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1117; --panel: #1c1f26; --panel2: #161b22; --ink: #e1e4e8;
+    --muted: #8b949e; --faint: #6e7681; --line: #2d3139; --line2: #21262d;
+    --accent: #58a6ff; --on-accent: #0d1117; --pos: #3fb950;
+    --critical: #ff8983; --serious: #f0883e; --warning: #e3b341;
+    --tint-crit: rgba(248,81,73,.14); --tint-ser: rgba(219,109,40,.14);
+    --tint-warn: rgba(210,153,34,.13); --tint-pos: rgba(63,185,80,.12);
+    --shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 2px 10px rgba(0,0,0,.30);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 14px var(--pad) 0; }
+
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  /* ---- header ---------------------------------------------------------- */
+  header.top { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+  .radar { width: 30px; height: 30px; flex: 0 0 auto; }
+  header h1 { font-size: 1.12rem; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+  .asof { color: var(--muted); font-size: .76rem; margin-top: 1px; }
+  .spacer { flex: 1; }
+  .theme-btn {
+    background: none; border: 1px solid var(--line); color: var(--muted);
+    border-radius: 8px; width: 34px; height: 34px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  }
+  .theme-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ---- staleness banner ------------------------------------------------- */
+  .stale {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--tint-warn); border: 1px solid var(--warning);
+    color: var(--ink); border-radius: 10px; padding: 11px 13px;
+    font-size: .83rem; margin-bottom: 12px;
+  }
+  .stale svg { flex: 0 0 auto; margin-top: 2px; color: var(--warning); }
+  .stale strong { color: var(--warning); }
+
+  /* ---- tabs ------------------------------------------------------------- */
+  .tabs {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; gap: 4px; padding: 8px 0 10px;
+    background: var(--bg); border-bottom: 1px solid var(--line2); margin-bottom: 16px;
+  }
+  .tab {
+    flex: 1; background: none; border: 1px solid transparent; color: var(--muted);
+    font: inherit; font-size: .85rem; font-weight: 600; padding: 8px 6px;
+    border-radius: 9px; cursor: pointer; white-space: nowrap;
+  }
+  .tab[aria-selected="true"] { background: var(--panel2); color: var(--ink); border-color: var(--line); }
+
+  /* ---- panels ----------------------------------------------------------- */
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: var(--shadow); padding: 16px;
+  }
+  .section-title {
+    font-size: .7rem; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .1em; font-weight: 700; margin: 0 0 12px;
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  }
+  .section-title .count { color: var(--faint); text-transform: none; letter-spacing: 0; font-weight: 500; }
+
+  /* ---- the search hero -------------------------------------------------- */
+  .hero-label { font-size: 1.02rem; font-weight: 600; margin: 0 0 3px; }
+  .hero-sub { color: var(--muted); font-size: .82rem; margin: 0 0 14px; }
+  .field {
+    width: 100%; background: var(--panel2); border: 1px solid var(--line);
+    color: var(--ink); border-radius: 10px; padding: 12px 14px;
+    font-size: 16px; /* 16px or iOS zooms the page on focus */
+    font-family: inherit;
+  }
+  .field::placeholder { color: var(--faint); }
+  .field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--tint-pos); }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  .row .field { flex: 1; min-width: 0; }
+  .btn {
+    background: var(--panel2); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 10px; padding: 11px 15px; font-family: inherit; font-size: .87rem;
+    font-weight: 600; cursor: pointer; display: inline-flex; align-items: center;
+    justify-content: center; gap: 7px; white-space: nowrap;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); color: var(--on-accent); }
+  .btn.wide { flex: 1; }
+  .btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
+
+  .opts { display: flex; align-items: center; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+  .opt { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: .79rem; cursor: pointer; }
+  .opt input { accent-color: var(--accent); cursor: pointer; }
+  select.mini {
+    background: var(--panel2); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 7px; padding: 4px 7px; font-family: inherit; font-size: .79rem;
+  }
+
+  /* ---- camera ----------------------------------------------------------- */
+  .scanner { margin-top: 12px; display: none; }
+  .scanner.on { display: block; }
+  .scanner .stage {
+    position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden;
+    border-radius: 12px; background: #000; border: 1px solid var(--line);
+  }
+  .scanner video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .reticle {
+    position: absolute; inset: 22% 12%; border: 2px solid rgba(255,255,255,.85);
+    border-radius: 10px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.35);
+  }
+  .scan-note { color: var(--muted); font-size: .78rem; margin: 8px 0 0; }
+
+  /* ---- the answer ------------------------------------------------------- */
+  .answer { margin-top: 16px; scroll-margin-top: 62px; }
+  .headline {
+    border-radius: 12px; padding: 16px; border: 1px solid;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .headline svg { width: 26px; height: 26px; flex: 0 0 auto; margin-top: 1px; }
+  .headline h2 { margin: 0 0 3px; font-size: 1.12rem; font-weight: 700; letter-spacing: -.01em; }
+  .headline p { margin: 0; font-size: .85rem; color: var(--muted); }
+  .headline.clear    { border-color: var(--pos);      background: var(--tint-pos); }
+  .headline.clear h2 { color: var(--pos); }
+  .headline.clear svg { color: var(--pos); }
+  .headline.certain    { border-color: var(--critical); background: var(--tint-crit); }
+  .headline.certain h2 { color: var(--critical); }
+  .headline.certain svg { color: var(--critical); }
+  .headline.likely    { border-color: var(--serious); background: var(--tint-ser); }
+  .headline.likely h2 { color: var(--serious); }
+  .headline.likely svg { color: var(--serious); }
+  .headline.possible    { border-color: var(--warning); background: var(--tint-warn); }
+  .headline.possible h2 { color: var(--warning); }
+  .headline.possible svg { color: var(--warning); }
+
+  /* ---- badges ----------------------------------------------------------- */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: .66rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 7px; white-space: nowrap; border: 1px solid;
+  }
+  .badge svg { width: 11px; height: 11px; flex: 0 0 auto; }
+  .badge.certain  { background: var(--tint-crit); color: var(--critical); border-color: var(--critical); }
+  .badge.likely   { background: var(--tint-ser);  color: var(--serious);  border-color: var(--serious); }
+  .badge.possible { background: var(--tint-warn); color: var(--warning);  border-color: var(--warning); }
+  .badge.clear    { background: var(--tint-pos);  color: var(--pos);      border-color: var(--pos); }
+  .badge.plain    { background: var(--panel2); color: var(--muted); border-color: var(--line); }
+
+  .cls { font-size: .66rem; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .cls.c1 { color: var(--critical); border-color: var(--critical); }
+  .cls.c2 { color: var(--warning);  border-color: var(--warning); }
+
+  /* ---- recall cards ----------------------------------------------------- */
+  .rec {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 11px;
+    padding: 13px 14px; margin-top: 10px;
+  }
+  .rec-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 7px; }
+  .rec-firm { font-weight: 700; font-size: .92rem; margin-right: auto; }
+  .rec dl { margin: 0; display: grid; grid-template-columns: 66px 1fr; gap: 4px 10px; font-size: .84rem; }
+  .rec dt { color: var(--faint); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; padding-top: 3px; }
+  .rec dd { margin: 0; overflow-wrap: anywhere; }
+  .rec dd.codes { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .77rem; color: var(--muted); }
+  .rec-foot {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line2);
+    font-size: .75rem; color: var(--faint);
+  }
+  .why { color: var(--muted); font-style: italic; }
+  details.more > summary { cursor: pointer; color: var(--muted); font-size: .78rem; padding: 4px 0; }
+  details.more[open] > summary { margin-bottom: 4px; }
+
+  /* ---- lists ------------------------------------------------------------ */
+  .empty { color: var(--faint); font-size: .85rem; padding: 14px 0; text-align: center; }
+  .watch-item {
+    display: flex; align-items: center; gap: 10px; padding: 11px 0;
+    border-bottom: 1px solid var(--line2);
+  }
+  .watch-item:last-child { border-bottom: 0; }
+  .watch-name { flex: 1; min-width: 0; }
+  .watch-name b { font-weight: 600; font-size: .92rem; display: block; }
+  .watch-name span { color: var(--faint); font-size: .75rem; }
+  .icon-btn {
+    background: none; border: 0; color: var(--faint); cursor: pointer;
+    padding: 6px; border-radius: 7px; line-height: 0;
+  }
+  .icon-btn:hover { color: var(--critical); background: var(--tint-crit); }
+  .feed-item { padding: 12px 0; border-bottom: 1px solid var(--line2); }
+  .feed-item:last-child { border-bottom: 0; }
+  .feed-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+  .feed-firm { font-weight: 600; font-size: .89rem; margin-right: auto; }
+  .feed-date { color: var(--faint); font-size: .74rem; }
+  .feed-desc { font-size: .83rem; color: var(--muted); }
+  .feed-reason { font-size: .81rem; margin-top: 3px; }
+
+  .stats { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 92px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .stat b { display: block; font-size: 1.22rem; font-weight: 700; letter-spacing: -.02em; }
+  .stat span { color: var(--muted); font-size: .72rem; }
+
+  /* ---- footer ----------------------------------------------------------- */
+  footer.legal {
+    margin: 24px 0 0; padding: 16px 0 24px; border-top: 1px solid var(--line2);
+    color: var(--faint); font-size: .76rem;
+  }
+  footer.legal p { margin: 0 0 8px; }
+  footer.legal strong { color: var(--muted); }
+
+  [hidden] { display: none !important; }
+</style>
+
+<div class="wrap">
+
+  <header class="top">
+    <svg class="radar" viewBox="0 0 40 40" aria-hidden="true">
+      <circle cx="20" cy="20" r="2.2" fill="currentColor" style="color:var(--accent)"/>
+      <circle cx="20" cy="20" r="8"  fill="none" stroke="var(--accent)" stroke-width="1.7" opacity=".95"/>
+      <circle cx="20" cy="20" r="13" fill="none" stroke="var(--accent)" stroke-width="1.7" opacity=".55"/>
+      <circle cx="20" cy="20" r="18" fill="none" stroke="var(--accent)" stroke-width="1.7" opacity=".28"/>
+      <circle cx="30.2" cy="12" r="3.2" fill="var(--critical)"/>
+    </svg>
+    <div>
+      <h1>Recall Radar</h1>
+      <div class="asof" id="asof">loading&hellip;</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="theme-btn" id="theme-btn" title="Switch theme" aria-label="Switch theme">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Shown by script once the baked snapshot passes a week old. A food-safety
+       tool that goes quietly stale is worse than one that admits it. -->
+  <div class="stale" id="stale" hidden>
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+      <path d="M12 9v4"/><path d="M12 17h.01"/>
+      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>
+    </svg>
+    <div><strong>This data is <span id="stale-age"></span> old.</strong>
+      Recalls issued since then are not in here. Check
+      <a href="https://www.fda.gov/safety/recalls-market-withdrawals-safety-alerts">FDA</a> and
+      <a href="https://www.fsis.usda.gov/recalls">USDA</a> directly before trusting a clear result.</div>
+  </div>
+
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button class="tab" role="tab" id="tab-check" aria-controls="view-check" aria-selected="true">Check</button>
+    <button class="tab" role="tab" id="tab-watch" aria-controls="view-watch" aria-selected="false">Watchlist</button>
+    <button class="tab" role="tab" id="tab-feed"  aria-controls="view-feed"  aria-selected="false">Open recalls</button>
+  </nav>
+
+  <!-- ===== check ========================================================= -->
+  <section id="view-check" role="tabpanel" aria-labelledby="tab-check">
+    <div class="panel">
+      <p class="hero-label">Check it before it goes in the cart</p>
+      <p class="hero-sub">Scan the barcode, or type the brand and product.</p>
+
+      <input class="field" id="q" type="search" autocomplete="off" enterkeyhint="search"
+             placeholder="e.g. Taylor Farms chopped salad" aria-label="Product name">
+      <div class="row">
+        <input class="field" id="upc" type="search" inputmode="numeric" autocomplete="off"
+               enterkeyhint="search" placeholder="or barcode digits" aria-label="Barcode digits">
+        <button class="btn" id="scan-btn" title="Scan a barcode with the camera">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+            <path d="M7 8v8"/><path d="M11 8v8"/><path d="M15 8v8"/>
+          </svg>
+          <span id="scan-label">Scan</span>
+        </button>
+      </div>
+      <div class="row">
+        <button class="btn primary wide" id="check-btn">Check</button>
+      </div>
+
+      <div class="opts">
+        <label class="opt">Sold in
+          <select class="mini" id="opt-state" aria-label="Filter by state of distribution">
+            <option value="">any state</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="scanner" id="scanner">
+        <div class="stage">
+          <video id="video" playsinline muted></video>
+          <div class="reticle"></div>
+        </div>
+        <p class="scan-note" id="scan-note">Hold the barcode inside the frame.</p>
+      </div>
+    </div>
+
+    <div class="answer" id="answer"></div>
+  </section>
+
+  <!-- ===== watchlist ===================================================== -->
+  <section id="view-watch" role="tabpanel" aria-labelledby="tab-watch" hidden>
+    <div class="panel">
+      <h2 class="section-title">The things you buy regularly <span class="count" id="watch-count"></span></h2>
+      <input class="field" id="w-label" placeholder="Product you buy regularly" aria-label="Product">
+      <div class="row">
+        <input class="field" id="w-brand" placeholder="Brand (optional)" aria-label="Brand">
+        <button class="btn" id="w-add">Add</button>
+      </div>
+      <div id="watchlist"></div>
+      <p class="scan-note">Saved on this phone only &mdash; it never leaves the device.</p>
+    </div>
+    <div id="watch-results"></div>
+  </section>
+
+  <!-- ===== feed ========================================================== -->
+  <section id="view-feed" role="tabpanel" aria-labelledby="tab-feed" hidden>
+    <div class="stats" id="stats"></div>
+    <div class="panel">
+      <h2 class="section-title">Open recalls, newest first <span class="count" id="feed-count"></span></h2>
+      <div class="opts" style="margin:-2px 0 8px;">
+        <label class="opt"><input type="checkbox" id="feed-class-i" checked> Class I only (most serious)</label>
+        <label class="opt"><input type="checkbox" id="feed-state"> Only my state</label>
+      </div>
+      <div id="feed"></div>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn wide" id="feed-more">Show more</button>
+      </div>
+    </div>
+  </section>
+
+  <footer class="legal">
+    <p><strong>This is a search tool, not an authority.</strong> It reports what FDA and USDA
+      published. Confirm against the linked official notice before acting, and if something in
+      your kitchen is recalled, follow the agency's instructions rather than your own judgement
+      about whether it looks fine.</p>
+    <p id="foot-scope"></p>
+    <p>Sources:
+      <a href="https://open.fda.gov/apis/food/enforcement/">openFDA food enforcement</a> and
+      <a href="https://www.fsis.usda.gov/recalls">USDA FSIS</a>.</p>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+"use strict";
+
+// The whole corpus and index, baked in by build.py. There is no server behind
+// this page: the aisle is the one place a network request is least likely to
+// work, so the data ships with the app.
+const DATA = __RECALL_DATA__;
+
+// Column order matches build.py's FIELDS.
+const F_ID = 0, F_SOURCE = 1, F_NUMBER = 2, F_CLASS = 3, F_FIRM = 4,
+      F_PRODUCT = 5, F_REASON = 6, F_DIST = 7, F_CODES = 8, F_DATE = 9, F_URL = 10;
+
+const rec = (i) => DATA.r[i];
+
+// The matcher itself lives in web/matcher.js and is inlined here by build.py,
+// so the identical file can be run against the Python original by
+// tests/test_web_parity.py.
+__MATCHER_JS__
+
+const M = RecallMatcher(DATA);
+const { Query, check, distributedTo, toGtin14, expandUpcE } = M;
+
+// ===========================================================================
+// rendering
+// ===========================================================================
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const ICON = {
+  certain: '<path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/>',
+  likely: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+  possible: '<circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  clear: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>',
+};
+const WORD = { certain: "Recalled", likely: "Likely recalled", possible: "Possible match",
+               clear: "No open recall" };
+
+function svg(kind, cls) {
+  return '<svg class="' + (cls || "") + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    ICON[kind] + "</svg>";
+}
+const badge = (kind) => '<span class="badge ' + kind + '">' + svg(kind) + WORD[kind] + "</span>";
+
+function classBadge(cls) {
+  if (!cls) return "";
+  const tier = cls === "Class I" ? "c1" : cls === "Class II" ? "c2" : "";
+  return '<span class="cls ' + tier + '">' + esc(cls) + "</span>";
+}
+
+function recallCard(m) {
+  const r = rec(m.idx);
+  const codes = r[F_CODES] && r[F_CODES] !== r[F_PRODUCT] ? r[F_CODES] : "";
+  const rows = [
+    ["Product", esc(r[F_PRODUCT]), ""],
+    ["Reason", esc(r[F_REASON]), ""],
+    ["Sold in", esc(r[F_DIST]), ""],
+    ["Codes", esc(codes), "codes"],
+  ].filter((row) => row[1]);
+
+  return '<article class="rec">' +
+    '<div class="rec-head">' +
+      '<span class="rec-firm">' + esc(r[F_FIRM] || "Unknown firm") + "</span>" +
+      badge(m.verdict) + classBadge(r[F_CLASS]) +
+    "</div>" +
+    "<dl>" + rows.map((row) =>
+      "<dt>" + row[0] + '</dt><dd class="' + row[2] + '">' + row[1] + "</dd>").join("") +
+    "</dl>" +
+    '<div class="rec-foot">' +
+      "<span>" + esc((r[F_SOURCE] || "").toUpperCase()) + " " + esc(r[F_NUMBER]) + "</span>" +
+      "<span>" + esc(r[F_DATE]) + "</span>" +
+      (r[F_URL] ? '<a href="' + esc(r[F_URL]) + '" rel="noopener">Official notice</a>' : "") +
+    "</div>" +
+    '<p class="why">' + esc(m.reasons[0]) + "</p>" +
+    "</article>";
+}
+
+function headline(kind, title, sub) {
+  return '<div class="headline ' + kind + '">' + svg(kind) +
+    "<div><h2>" + title + "</h2><p>" + sub + "</p></div></div>";
+}
+
+// ===========================================================================
+// state kept on the phone
+// ===========================================================================
+const STORE = {
+  get(key, fallback) {
+    try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); }
+    catch (e) { return fallback; }
+  },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} },
+};
+
+let watchItems = STORE.get("rr-watchlist", []);
+let stateFilter = STORE.get("rr-state", "");
+
+const STATES = ("AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO " +
+  "MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY").split(" ");
+
+// ===========================================================================
+// the check tab
+// ===========================================================================
+function runCheck(query) {
+  const matches = check(query, { state: stateFilter || null, limit: 25 });
+  const asOf = newestDate();
+  let html;
+
+  if (!matches.length) {
+    html = headline("clear",
+      "No open recall on file",
+      "Nothing in the " + DATA.counts.open.toLocaleString() + " open FDA and USDA recalls matches <b>" +
+      esc(query.label) + "</b>." + (stateFilter ? " Filtered to " + stateFilter + "." : "") +
+      " Data as of " + esc(asOf) + ".");
+  } else {
+    const worst = matches[0].verdict;
+    const sub = {
+      certain: "That barcode is listed in the recall's own code information. Do not buy it.",
+      likely: "The name matches an open recall closely. Read the details against the package before buying.",
+      possible: "A partial match only. This may or may not be your item &mdash; check the label against the recall below.",
+    }[worst];
+    html = headline(worst, esc(query.label), sub) +
+      matches.map(recallCard).join("");
+  }
+  $("answer").innerHTML = html;
+  $("answer").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function checkFromInputs() {
+  const upc = $("upc").value.trim();
+  const text = $("q").value.trim();
+  if (upc) {
+    const expanded = expandUpcE(upc.replace(/\D/g, ""));
+    const query = Query.fromBarcode(expanded, upc);
+    if (!query.gtin) {
+      $("answer").innerHTML = headline("possible", "That is not a barcode",
+        esc(upc) + " is not 12, 13 or 14 digits. Type the digits printed under the bars, or search by name.");
+      return;
+    }
+    // A barcode alone answers only "is this exact item recalled". Pairing it
+    // with whatever was typed lets the name search run too, so a recalled
+    // product with a different package size still surfaces.
+    if (text) query.product = text;
+    runCheck(query);
+  } else if (text) {
+    runCheck(Query.fromText(text));
+  } else {
+    $("answer").innerHTML = "";
+  }
+}
+
+// ---- camera --------------------------------------------------------------
+let stream = null, detector = null, scanTimer = null;
+
+function scanNote(msg) { $("scan-note").innerHTML = msg; }
+
+function stopScan() {
+  if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  $("scanner").classList.remove("on");
+  $("scan-label").textContent = "Scan";
+}
+
+async function startScan() {
+  if (!("BarcodeDetector" in window)) {
+    $("scanner").classList.add("on");
+    $("scanner").querySelector(".stage").hidden = true;
+    scanNote("This browser cannot scan barcodes (Safari on iPhone is the usual case). " +
+             "Type the digits printed under the bars into the barcode box instead.");
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    $("scanner").classList.add("on");
+    $("scanner").querySelector(".stage").hidden = true;
+    scanNote("No camera access here. Install this to your home screen, or type the digits.");
+    return;
+  }
+  try {
+    detector = detector || new window.BarcodeDetector({
+      formats: ["upc_a", "upc_e", "ean_13", "ean_8"],
+    });
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }, audio: false,
+    });
+  } catch (err) {
+    $("scanner").classList.add("on");
+    $("scanner").querySelector(".stage").hidden = true;
+    scanNote("Could not open the camera (" + esc(err && err.name) + "). " +
+             "In the Claude artifact view the camera is blocked &mdash; use the installed app, " +
+             "or type the digits.");
+    return;
+  }
+
+  const video = $("video");
+  video.srcObject = stream;
+  await video.play().catch(() => {});
+  $("scanner").querySelector(".stage").hidden = false;
+  $("scanner").classList.add("on");
+  $("scan-label").textContent = "Stop";
+  scanNote("Hold the barcode inside the frame.");
+
+  scanTimer = setInterval(async () => {
+    if (!stream) return;
+    let found;
+    try { found = await detector.detect(video); } catch (e) { return; }
+    if (!found || !found.length) return;
+    const raw = String(found[0].rawValue || "").replace(/\D/g, "");
+    if (!raw) return;
+    stopScan();
+    const code = expandUpcE(raw);
+    $("upc").value = code;
+    if (navigator.vibrate) navigator.vibrate(40);
+    runCheck(Object.assign(Query.fromBarcode(code, code),
+                           $("q").value.trim() ? { product: $("q").value.trim() } : {}));
+  }, 220);
+}
+
+// ===========================================================================
+// the watchlist tab
+// ===========================================================================
+function renderWatchlist() {
+  const list = $("watchlist"), out = $("watch-results");
+  $("watch-count").textContent = watchItems.length
+    ? watchItems.length + (watchItems.length === 1 ? " item" : " items") : "";
+
+  if (!watchItems.length) {
+    list.innerHTML = '<div class="empty">Nothing on the list yet. Add the things you buy every week.</div>';
+    out.innerHTML = "";
+    return;
+  }
+
+  const results = watchItems.map((w) => ({
+    item: w, matches: check(Query.fromWatch(w), { state: stateFilter || null, limit: 5 }),
+  }));
+
+  list.innerHTML = results.map((r, i) => {
+    const worst = r.matches.length ? r.matches[0].verdict : "clear";
+    return '<div class="watch-item">' +
+      '<div class="watch-name"><b>' + esc(r.item.label) + "</b>" +
+        (r.item.brand ? "<span>" + esc(r.item.brand) + "</span>" : "") + "</div>" +
+      badge(worst) +
+      '<button class="icon-btn" data-remove="' + i + '" aria-label="Remove ' + esc(r.item.label) + '">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>' +
+      "</button></div>";
+  }).join("");
+
+  const flagged = results.filter((r) => r.matches.length);
+  out.innerHTML = flagged.length
+    ? flagged.map((r) => '<div class="panel" style="margin-top:14px;">' +
+        '<h2 class="section-title">' + esc(r.item.label) +
+        '<span class="count">' + r.matches.length +
+        (r.matches.length === 1 ? " match" : " matches") + "</span></h2>" +
+        r.matches.map(recallCard).join("") + "</div>").join("")
+    : "";
+}
+
+// ===========================================================================
+// the open-recall feed
+// ===========================================================================
+let feedShown = 20;
+
+function renderFeed() {
+  const classIOnly = $("feed-class-i").checked;
+  const myStateOnly = $("feed-state").checked && stateFilter;
+  const rows = [];
+  for (let i = 0; i < DATA.r.length; i++) {
+    if (classIOnly && rec(i)[F_CLASS] !== "Class I") continue;
+    if (myStateOnly && !distributedTo(i, stateFilter)) continue;
+    rows.push(i);
+  }
+
+  $("feed-count").textContent = rows.length.toLocaleString() +
+    (classIOnly ? " Class I" : "") + (myStateOnly ? " in " + stateFilter : "");
+  $("feed").innerHTML = rows.length
+    ? rows.slice(0, feedShown).map((i) => {
+        const r = rec(i);
+        return '<div class="feed-item"><div class="feed-head">' +
+          '<span class="feed-firm">' + esc(r[F_FIRM] || "Unknown firm") + "</span>" +
+          classBadge(r[F_CLASS]) + '<span class="feed-date">' + esc(r[F_DATE]) + "</span></div>" +
+          '<div class="feed-reason">' + esc(r[F_REASON]) + "</div>" +
+          '<details class="more"><summary>Product detail</summary>' +
+          '<div class="feed-desc">' + esc(r[F_PRODUCT]) +
+          (r[F_URL] ? ' <a href="' + esc(r[F_URL]) + '" rel="noopener">notice</a>' : "") +
+          "</div></details></div>";
+      }).join("")
+    : '<div class="empty">Nothing matches those filters.</div>';
+  $("feed-more").hidden = rows.length <= feedShown;
+}
+
+function renderStats() {
+  const c = DATA.counts;
+  const cells = [
+    [c.open.toLocaleString(), "open recalls"],
+    [c.class_i.toLocaleString(), "Class I (most serious)"],
+    [c.with_upc.toLocaleString(), "carry a barcode"],
+  ];
+  $("stats").innerHTML = cells.map((x) =>
+    '<div class="stat"><b>' + x[0] + "</b><span>" + x[1] + "</span></div>").join("");
+}
+
+// ===========================================================================
+// chrome: dates, staleness, tabs, theme
+// ===========================================================================
+function newestDate() {
+  return Object.values(DATA.as_of).sort().pop() || DATA.built.slice(0, 10);
+}
+
+function renderHeader() {
+  const agency = (k) => (k === "fda" ? "FDA" : "USDA");
+  const built = new Date(DATA.built);
+  const short = built.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  $("asof").textContent = DATA.counts.open.toLocaleString() + " open recalls · updated " + short;
+
+  const per = Object.keys(DATA.as_of).sort()
+    .map((k) => agency(k) + " through " + DATA.as_of[k] + " (" +
+                (DATA.counts.by_source[k] || 0) + " open)").join(", ");
+  $("foot-scope").innerHTML =
+    "Open recalls only &mdash; " + DATA.counts.open.toLocaleString() + " of them: " + esc(per) +
+    ". Recalls the agencies have since terminated are left out, because a terminated recall " +
+    "means the product is already off the shelf. To search those, use the command line: " +
+    "<code>recall-radar check --all</code>. Built " + esc(DATA.built.slice(0, 10)) + ".";
+
+  const builtMs = Date.parse(DATA.built);
+  const days = Math.floor((Date.now() - builtMs) / 86400000);
+  if (days >= 7) {
+    $("stale-age").textContent = days < 60 ? days + " days" : Math.floor(days / 30) + " months";
+    $("stale").hidden = false;
+  }
+}
+
+const TABS = [["tab-check", "view-check"], ["tab-watch", "view-watch"], ["tab-feed", "view-feed"]];
+
+function showTab(id) {
+  for (const [tab, view] of TABS) {
+    const on = tab === id;
+    $(tab).setAttribute("aria-selected", String(on));
+    $(view).hidden = !on;
+  }
+  if (id === "tab-watch") renderWatchlist();
+  if (id === "tab-feed") { renderStats(); renderFeed(); }
+}
+
+function applyTheme(mode) {
+  if (mode) document.documentElement.setAttribute("data-theme", mode);
+  else document.documentElement.removeAttribute("data-theme");
+}
+
+// ===========================================================================
+// wiring
+// ===========================================================================
+const sel = $("opt-state");
+for (const s of STATES) {
+  const o = document.createElement("option");
+  o.value = o.textContent = s;
+  sel.appendChild(o);
+}
+sel.value = stateFilter;
+sel.addEventListener("change", () => {
+  stateFilter = sel.value;
+  STORE.set("rr-state", stateFilter);
+  if (!$("view-watch").hidden) renderWatchlist();
+  if (!$("view-feed").hidden) renderFeed();
+});
+
+$("check-btn").addEventListener("click", checkFromInputs);
+for (const id of ["q", "upc"]) {
+  $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") checkFromInputs(); });
+}
+$("scan-btn").addEventListener("click", () => {
+  if (stream || $("scanner").classList.contains("on")) stopScan();
+  else startScan();
+});
+
+$("w-add").addEventListener("click", () => {
+  const label = $("w-label").value.trim();
+  if (!label) return;
+  watchItems.push({ label, brand: $("w-brand").value.trim() || null, product: label, gtin: null });
+  STORE.set("rr-watchlist", watchItems);
+  $("w-label").value = $("w-brand").value = "";
+  renderWatchlist();
+});
+$("w-label").addEventListener("keydown", (e) => { if (e.key === "Enter") $("w-add").click(); });
+$("w-brand").addEventListener("keydown", (e) => { if (e.key === "Enter") $("w-add").click(); });
+$("watchlist").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-remove]");
+  if (!btn) return;
+  watchItems.splice(Number(btn.dataset.remove), 1);
+  STORE.set("rr-watchlist", watchItems);
+  renderWatchlist();
+});
+
+$("feed-class-i").addEventListener("change", () => { feedShown = 20; renderFeed(); });
+$("feed-state").addEventListener("change", () => { feedShown = 20; renderFeed(); });
+$("feed-more").addEventListener("click", () => { feedShown += 40; renderFeed(); });
+
+for (const [tab] of TABS) $(tab).addEventListener("click", () => showTab(tab));
+
+applyTheme(STORE.get("rr-theme", null));
+$("theme-btn").addEventListener("click", () => {
+  const dark = getComputedStyle(document.body).backgroundColor === "rgb(15, 17, 23)";
+  const next = dark ? "light" : "dark";
+  STORE.set("rr-theme", next);
+  applyTheme(next);
+});
+
+// Leaving the tab with the camera on is a battery and privacy problem.
+document.addEventListener("visibilitychange", () => { if (document.hidden) stopScan(); });
+
+renderHeader();
+showTab("tab-check");
+})();
+</script>
