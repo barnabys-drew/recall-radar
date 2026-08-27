@@ -54,14 +54,35 @@ jobs:
         id: build
         run: python3 build.py
 
+      # Someone can land a commit while the sync is running, which loses the
+      # push. Everything under docs/ is generated, so the resolution is never a
+      # merge: take their main, bake the page again on top of it, and retry. The
+      # re-bake reuses the database this job already synced, so no retry costs a
+      # second round trip to FDA and USDA.
       - name: Commit the new build
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs
-          if git diff --cached --quiet; then
-            echo "Nothing changed."
-            exit 0
-          fi
-          git commit -m "Rebuild recall data: ${{ steps.build.outputs.summary }}"
-          git push
+
+          stage() {
+            git add docs
+            if git diff --cached --quiet; then
+              echo "Nothing changed."
+              return 1
+            fi
+            git commit -m "Rebuild recall data: ${{ steps.build.outputs.summary }}"
+          }
+
+          stage || exit 0
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "::warning::Push rejected (attempt $attempt); rebuilding on top of main."
+            git fetch origin main
+            git reset --hard origin/main
+            python3 build.py --no-sync
+            stage || exit 0
+          done
+          echo "::error::Could not push after three attempts."
+          exit 1
