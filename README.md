@@ -11,18 +11,28 @@ whether a specific thing you are about to buy is on the list.
 
 ## The phone app
 
-**Live: https://barnabys-drew.github.io/recall-radar/**
-
 The dashboard below needs a laptop, a Python process and a 30 MB database. The
 place you actually need this is a grocery aisle, holding a jar, on a phone with
 one bar of signal. So the same matcher is baked into a single page that carries
 its own copy of the corpus and answers with no network at all.
 
-Open the link, then install it to your home screen — it runs like an app and
-works with no signal.
+```console
+python3 build.py                       # bake the page
+python3 -m http.server -d docs 8000    # then open http://localhost:8000
+```
+
+Once it is hosted, open the link on a phone and install it to the home screen —
+it runs like an app and works with no signal.
 
 - **iPhone (Safari):** Share button → **Add to Home Screen**
 - **Android (Chrome):** ⋮ menu → **Install app** / **Add to Home screen**
+
+> **Hosting is not set up yet.** `docs/` is ready to serve from GitHub Pages at
+> `main → /docs`, but Pages does not serve a private repository on a free plan,
+> so that switch needs the repo made public first. Until then the page works
+> from any static host, or from `python3 -m http.server` above — `localhost`
+> counts as a secure context, so the service worker and offline mode work there
+> too.
 
 | Something on the list | Something that is fine |
 | --- | --- |
@@ -270,8 +280,13 @@ an open-count floor would fail every build.
 `.github/workflows/rebuild.yml` runs the same command every morning and commits
 the result, so the hosted page is never more than a day behind. A failed fetch
 fails the job and leaves the last good build serving — stale-but-complete beats
-fresh-but-missing-the-meat. Serving requires GitHub Pages set to **main → /docs**
-in the repository settings.
+fresh-but-missing-the-meat. The daily commit lands whether or not Pages is
+serving; turning Pages on later starts publishing what is already there.
+
+Note that `docs/index.html` is ~790 KB and is rewritten every day, so the daily
+job adds that much churn to the history. Git deltas most of it away — the recall
+text barely changes between builds — but it is the price of a page that carries
+its own data.
 
 ## Development
 
