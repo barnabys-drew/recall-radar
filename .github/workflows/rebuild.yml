@@ -50,6 +50,12 @@ jobs:
       - name: Test
         run: python3 -m unittest discover -s tests -t .
 
+      # Must run before build.py overwrites the page: this is the record of
+      # what was already published, and it is the only thing that stops the
+      # Discord notice from re-announcing the whole corpus.
+      - name: Note what is already published
+        run: python3 notify.py snapshot --out "${{ runner.temp }}/before.json"
+
       - name: Sync and rebuild
         id: build
         run: python3 build.py
@@ -86,3 +92,14 @@ jobs:
           done
           echo "::error::Could not push after three attempts."
           exit 1
+
+      # Only after the push: a notice about a build that never shipped points
+      # at an app that does not have the recall in it yet. Nothing here fails
+      # the job - the app is the product, and Discord is a convenience on top.
+      # A fork without the secret configured simply prints and moves on.
+      - name: Announce new recalls on Discord
+        if: success()
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python3 notify.py post --before "${{ runner.temp }}/before.json"

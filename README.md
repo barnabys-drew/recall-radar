@@ -288,15 +288,84 @@ job adds that much churn to the history. Git deltas most of it away — the reca
 text barely changes between builds — but it is the price of a page that carries
 its own data.
 
+## Discord notices
+
+The app is a pull tool: you open it in the aisle and ask about the thing in your
+hand. The push half is `notify.py`, which posts newly published recalls to a
+Discord channel — the ones you would never have thought to ask about, on food
+already in the kitchen.
+
+```console
+export DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/...'
+
+python3 notify.py snapshot --out before.json    # before build.py runs
+python3 build.py
+python3 notify.py post --before before.json     # after the build has shipped
+```
+
+Add `--dry-run` to print the exact payloads instead of sending them, and
+`--class-i-only` to hear about nothing but the tier that means *reasonable
+probability of serious health consequences or death*.
+
+### Setting it up on the hosted app
+
+1. In Discord: **Server Settings → Integrations → Webhooks → New Webhook**,
+   pick the channel, then **Copy Webhook URL**.
+2. Give it to the repository as a secret, so it never lands in the history:
+
+   ```console
+   gh secret set DISCORD_WEBHOOK_URL     # paste the URL at the prompt
+   ```
+
+3. That is all. `.github/workflows/rebuild.yml` already brackets the daily
+   rebuild with the two commands above.
+
+Without the secret the step prints a note and moves on, so a fork of this repo
+builds and deploys exactly as before.
+
+### Why it diffs pages instead of dates
+
+"New" is deliberately *not* "reported today". FDA publishes in weekly batches and
+backfills older events, so a recall can arrive today carrying a date from two
+years ago — and a date filter would silently drop it. Instead, `snapshot` records
+which recalls the currently published page carries, and `post` announces whatever
+the fresh build added. The last page that shipped **is** the ledger.
+
+That needs no database, no committed state file and no clock, and it degrades
+the right way: skip a day, or a week, and the next run still announces
+everything that appeared while nobody was looking.
+
+The one failure that would matter is announcing all 900-odd open recalls at once
+because the ledger went missing. So a missing or empty snapshot announces
+*nothing* — the first build is the baseline, not news — and that refusal is
+covered by a test.
+
+### Shape of a notice
+
+Cards are ordered worst first (Class I, then newest) and batched to respect every
+Discord ceiling: ten embeds a message, 6,000 characters across them, 2,000 in the
+lead line. Only the first 40 recalls get their own card; past that the notice says
+how many were left out and links to the app, which is more useful than forty more
+cards nobody scrolls. Mentions are disabled in the payload, so a firm that has
+named itself something unfortunate cannot ping the channel.
+
+A quiet run sends nothing at all. In practice that is most days: FDA publishes on
+Wednesdays, so a typical week is six silent runs and one batch of ten to thirty.
+
+Sending never fails the job. The app is the product and the notice is a
+convenience on top, so a webhook that has been deleted leaves a warning on the
+run rather than blocking the day's data.
+
 ## Development
 
 ```console
 python3 -m unittest discover -s tests -t .
 ```
 
-42 tests, no network access required — the source adapters are tested against
+63 tests, no network access required — the source adapters are tested against
 captured payload shapes, including the malformed and edge-case records that
-broke earlier versions.
+broke earlier versions. The Discord suite fakes the transport, so it covers the
+rate-limit retry and the refusals without touching the network.
 
 Six of those are the browser parity suite. They shell out to `node`, and skip
 themselves if it is not installed, so `web/matcher.js` is only ever verified
@@ -319,5 +388,11 @@ parseable UPC. What is left:
   UPC-A in its input adapter, because that is the form a camera reports.
   `normalize.to_gtin14` still rejects an 8-digit code, so the CLI cannot be
   handed one directly.
-- **Alerting** — `scan --new` already keeps a dedupe ledger in the `alerts`
-  table, so a cron job plus an email or push sender is a small addition.
+- **Watchlist alerts** — Discord notices cover *every* new recall (see
+  [Discord notices](#discord-notices)). Narrowing them to the things one
+  household actually buys is the obvious next step, but the watchlist lives in
+  the phone's local storage, which is the only place a public repository can
+  keep a list of what a family eats. Doing it properly means either running the
+  match in the browser and posting from there, or a private companion repo
+  holding the list and calling `scan --new`, whose `alerts` table is already a
+  dedupe ledger built for exactly this.
