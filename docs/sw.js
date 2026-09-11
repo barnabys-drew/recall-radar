@@ -3,7 +3,7 @@
 
    CACHE is stamped with a content hash at build time, so the daily rebuild
    invalidates yesterday's recalls sitting in someone's phone cache. */
-const CACHE = "recall-radar-7cf78a3f3415";
+const CACHE = "recall-radar-087dfcfceae8";
 
 const ASSETS = [
   "./",
