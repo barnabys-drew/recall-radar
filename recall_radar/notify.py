@@ -21,6 +21,7 @@ keep a list of what one family eats.
 import json
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # Discord's documented ceilings. Exceeding any of them fails the whole request,
@@ -240,12 +241,14 @@ class DiscordError(RuntimeError):
 
 
 def _post_once(url, payload, timeout):
+    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
+        raise DiscordError("webhook URL must be http(s)")
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
         url, data=body, method="POST",
         headers={"Content-Type": "application/json",
                  "User-Agent": "recall-radar (+https://github.com/barnabys-drew/recall-radar)"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- scheme checked above
         return resp.status, resp.read()
 
 
