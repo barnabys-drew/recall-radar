@@ -43,7 +43,7 @@ jobs:
 
       # Only the parity test needs Node, and it is the test that matters most
       # here: this job is what puts the ported matcher in front of people.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
