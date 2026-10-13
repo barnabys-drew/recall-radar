@@ -1,0 +1,53 @@
+name: Dependency checks
+
+# Runs on pull requests into main (the dev -> main merge). Fails on known
+# vulnerable dependencies. Versions are kept fresh by Dependabot, which opens
+# its PRs against dev.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy:
+    name: Trivy (known-vulnerable dependencies)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567  # v0.3.1
+        with:
+          version: v0.75.0
+
+      - name: Trivy filesystem scan
+        run: >
+          trivy fs --quiet --scanners vuln --severity HIGH,CRITICAL
+          --ignore-unfixed --exit-code 1 .
+
+  # Diffs the PR's dependency changes (new vulnerable or newly-licensed
+  # packages). Needs the dependency graph: free on public repos only.
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294  # v5.0.0
+        with:
+          fail-on-severity: high
