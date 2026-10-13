@@ -248,5 +248,11 @@ class TestTheCommandLine(unittest.TestCase):
             os.unlink(path)
 
 
+class PostOnceSchemeTests(unittest.TestCase):
+    def test_refuses_non_http_webhook(self):
+        with self.assertRaises(notify.DiscordError):
+            notify._post_once("file:///etc/passwd", {}, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

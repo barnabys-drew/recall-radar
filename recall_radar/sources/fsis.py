@@ -79,7 +79,7 @@ def _firm_from_title(title):
 def _fetch_raw(timeout=90):
     req = urllib.request.Request(ENDPOINT, headers=BROWSER_HEADERS)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- fixed https ENDPOINT
             payload = resp.read()
             if resp.headers.get("Content-Encoding") == "gzip":
                 payload = gzip.GzipFile(fileobj=io.BytesIO(payload)).read()
